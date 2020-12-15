@@ -16,7 +16,7 @@ spec:
       containers:
         - name: kubeflow-operator
           # Replace this with the built image name
-          image: aipipeline/kubeflow-operator:latest
+          image: quay.io/kubermatic/kubeflow-operator
           command:
           - kfctl
           imagePullPolicy: Always
