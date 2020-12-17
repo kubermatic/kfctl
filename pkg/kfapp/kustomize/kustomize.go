@@ -591,6 +591,16 @@ func (kustomize *kustomize) Generate(resources kftypesv3.ResourceEnum) error {
 			appPath := path.Join(repoCache.LocalPath, app.KustomizeConfig.RepoRef.Path)
 
 			if kustomize.kfDef.UsingStacks() {
+				abpath, err := filepath.Abs(appPath)
+				if err != nil {
+					errors.WithStack(fmt.Errorf("There was a problem computing absolute path of %v; error; %v ", appPath, err))
+				}
+				if err := UpdateParamFiles(abpath, kustomize.kfDef, app.KustomizeConfig.Parameters); err != nil {
+					return &kfapisv3.KfError{
+						Code:    int(kfapisv3.INTERNAL_ERROR),
+						Message: fmt.Sprintf("couldn't update parameters %s: %v", app.Name, err),
+					}
+				}
 				if filepath.IsAbs(appPath) {
 					// The appPath needs to be a relative path because we use it as a resource location in the kustomize
 					// file
@@ -605,13 +615,6 @@ func (kustomize *kustomize) Generate(resources kftypesv3.ResourceEnum) error {
 					}
 
 					appPath = relPath
-				}
-
-				if err := UpdateParamFiles(appPath, kustomize.kfDef, app.KustomizeConfig.Parameters); err != nil {
-					return &kfapisv3.KfError{
-						Code:    int(kfapisv3.INTERNAL_ERROR),
-						Message: fmt.Sprintf("couldn't update parameters %s: %v", app.Name, err),
-					}
 				}
 
 				// We handle generating the kustomize dir for application stacks differently.
