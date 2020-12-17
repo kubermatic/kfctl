@@ -16,7 +16,7 @@ spec:
       containers:
         - name: kubeflow-operator
           # Replace this with the built image name
-          image: quay.io/kubermatic/kubeflow-operator
+          image: quay.io/kubermatic/kubeflow-operator:stack-hack
           command:
           - kfctl
           imagePullPolicy: Always
