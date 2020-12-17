@@ -591,7 +591,6 @@ func (kustomize *kustomize) Generate(resources kftypesv3.ResourceEnum) error {
 			appPath := path.Join(repoCache.LocalPath, app.KustomizeConfig.RepoRef.Path)
 
 			if kustomize.kfDef.UsingStacks() {
-
 				if filepath.IsAbs(appPath) {
 					// The appPath needs to be a relative path because we use it as a resource location in the kustomize
 					// file
@@ -607,6 +606,14 @@ func (kustomize *kustomize) Generate(resources kftypesv3.ResourceEnum) error {
 
 					appPath = relPath
 				}
+
+				if err := UpdateParamFiles(appPath, kustomize.kfDef, app.KustomizeConfig.Parameters); err != nil {
+					return &kfapisv3.KfError{
+						Code:    int(kfapisv3.INTERNAL_ERROR),
+						Message: fmt.Sprintf("couldn't update parameters %s: %v", app.Name, err),
+					}
+				}
+
 				// We handle generating the kustomize dir for application stacks differently.
 				stackAppDir := path.Join(kustomizeDir, app.Name)
 
@@ -831,6 +838,59 @@ func WriteKfDef(kfdef *kfdefsv3.KfDef, kfdefpath string) error {
 	writeErr := ioutil.WriteFile(kfdefpath, data, 0644)
 	if writeErr != nil {
 		return writeErr
+	}
+	return nil
+}
+
+func UpdateParamFiles(targetDir string, kfDef *kfconfig.KfConfig, params []kfconfig.NameValue) error {
+	paramMap := make(map[string]string)
+	for _, nv := range params {
+		paramMap[nv.Name] = nv.Value
+	}
+
+	paramFile := filepath.Join(targetDir, kftypesv3.KustomizationParamFile)
+	if _, err := os.Stat(paramFile); err == nil {
+		params, paramFileErr := readLines(paramFile)
+		if paramFileErr != nil {
+			return &kfapisv3.KfError{
+				Code:    int(kfapisv3.INVALID_ARGUMENT),
+				Message: fmt.Sprintf("could not open %v: %v", paramFile, paramFileErr),
+			}
+		}
+		// in params.env look for name=value that we can substitute from componentParams[component]
+		// or if there is just namespace= or project= - fill in the values from KfDef
+		for i, param := range params {
+			paramName := strings.Split(param, "=")[0]
+			if val, ok := paramMap[paramName]; ok && val != "" {
+				switch paramName {
+				case "generateName":
+					arr := strings.Split(param, "=")
+					if len(arr) == 1 || arr[1] == "" {
+						b := make([]byte, 4) //equals 8 charachters
+						rand.Read(b)
+						s := hex.EncodeToString(b)
+						val += s
+					}
+				}
+				params[i] = paramName + "=" + val
+			} else {
+				switch paramName {
+				case "appName":
+					params[i] = paramName + "=" + kfDef.Name
+				case "namespace":
+					params[i] = paramName + "=" + kfDef.Namespace
+				case "project":
+					params[i] = paramName + "=" + kfDef.Spec.Project
+				}
+			}
+		}
+		paramFileErr = writeLines(params, paramFile)
+		if paramFileErr != nil {
+			return &kfapisv3.KfError{
+				Code:    int(kfapisv3.INTERNAL_ERROR),
+				Message: fmt.Sprintf("could not update %v: %v", paramFile, paramFileErr),
+			}
+		}
 	}
 	return nil
 }
